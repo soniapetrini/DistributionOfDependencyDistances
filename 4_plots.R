@@ -32,8 +32,9 @@ if (args[[1]] == "artif") {
   print("artif-BIC diff")
   labs_rs <- paste("Model",artif_models, 'sample'); names(labs_rs) <- artif_models
   # read
-  BIC_df <- read.csv("ms_results/artificial/ICs_diff.csv",check.names = F)[-1] %>%
-    melt(id.vars=c("model","best")) %>% suppressWarnings() %>% rename(fitted_model=variable,BIC_diff=value) %>%
+  df <- read.csv("results/artificial/ms_results.csv",check.names = F)
+  BIC_df <- DfICdiff(df,'artif') %>% melt(id.vars=c("model","best")) %>% 
+    suppressWarnings() %>% rename(fitted_model=variable,BIC_diff=value) %>%
     transform(best=factor(best))
   # plot
   ggplot(BIC_df,aes(fitted_model,BIC_diff,fill=fitted_model)) + geom_bar(stat="identity") + 
@@ -105,8 +106,14 @@ if (args[[1]] != "artif") {
 }
 
 
-p_list <- list(DfBestModel('jpn','PUD'),DfBestModel('jpn','PSUD'))
-ggarrange(plotlist = p_list,nrow=2)
+# plot for presentation
+ISO_lang <- 'ita'
+collection <- 'PSUD'
+
+DfBestModel(ISO_lang,collection)
+ggsave(paste0("italian_lin_lin.png"))
+
+
 
 if (args[[1]] != "artif") {
 

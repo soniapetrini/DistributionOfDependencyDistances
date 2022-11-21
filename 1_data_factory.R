@@ -54,33 +54,6 @@ if (args[[1]] =="artif") {
 
 
 
-## TEST BINARY SEARCH
-#library(gtools)
-#
-#dmax <- 19
-#model <- '4'
-#x <- 1:dmax
-#p <- switch(model,'3'=model3(x,q1,q2,dstar),  '4'=model4(x,q1,q2,dstar,dmax),
-#            '6'=model6(x,gamma,q,dstar),'7'=model7(x,gamma,q,dstar,dmax))
-#P <- cumsum(p$y_pred)
-#
-#fun <- function(X) {
-#  u <- runif(1)
-#  ifelse(P[X] > u, 1, 0)
-#}
-#
-#sampleN <- integer()
-#while(length(sampleN) < N) {
-#  new_d <- binsearch(fun, range = c(1, 19))$where
-#  sampleN <- append(sampleN,new_d)
-#}
-#
-#real_df <- TableCumul(sampleN,cumul=F)
-
-
-
-
-
 
 
 

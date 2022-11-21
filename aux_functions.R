@@ -635,7 +635,7 @@ model9    <- function(d,gamma1,gamma2,dstar,dmax,cumul=F) {
 
 
 ## log-likelihoods ------------
-
+epsilon_q <- 10^-8
 
 
 ## estimation
@@ -688,7 +688,7 @@ MS_model1 <- function(q_init,d_vals,freq_d,N,M) {
   }
   mle_1 <- tryCatch( {
     mle(mloglik_1, start = list(q = q_init),method = "L-BFGS-B",
-        lower = c(0.001),upper = c(0.999))
+        lower = c(epsilon_q),upper = c(1-epsilon_q))
   }, error=function(e) { 
     message(e)
     NULL })
@@ -706,12 +706,12 @@ MS_model2 <- function(q_init,d_vals,freq_d,N,M) {
     
     mle_2 <- tryCatch( {
      mle(mloglik_2, start = list(q = q_init,dmax=max(d_vals)),method = "L-BFGS-B",
-          lower = list(q = 0.001,dmax=max(d_vals)), 
-          upper = list(q = 0.999))
+          lower = list(q = epsilon_q,dmax=max(d_vals)), 
+          upper = list(q = 1-epsilon_q))
     }, error=function(e) { 
      mle2(mloglik_2, start = list(q = q_init,dmax=max(d_vals)),method = "L-BFGS-B",
-          lower = list(q = 0.001,dmax=max(d_vals)), 
-          upper = list(q = 0.999))
+          lower = list(q = epsilon_q,dmax=max(d_vals)), 
+          upper = list(q = 1-epsilon_q))
     }, error=function(e) {
       message(e)
       NULL })
@@ -732,7 +732,7 @@ MS_model3 <- function(d_vals,freq_d,N,M,dstar_vals) {
     thresh2 <- ifelse(dstar %in% d_vals,dstar,max(d_vals[d_vals < dstar]))
     lm2 <- lm(log(p) ~ d, data=df[df$d>=thresh2,])
     q2_init <- 1-exp(lm2$coefficients[2])
-    q2_init <- ifelse(q2_init<0.001,0.001,q2_init)
+    q2_init <- ifelse(q2_init<epsilon_q,epsilon_q,q2_init)
     
     mloglik_3 <- function(q1,q2) {
           c1 <- c1_model3(q1,q2,dstar)
@@ -743,18 +743,18 @@ MS_model3 <- function(d_vals,freq_d,N,M,dstar_vals) {
         }
     mle_3 <- tryCatch( {
           mle(mloglik_3, start = list(q1 = q1_init, q2 = q2_init),method = "L-BFGS-B",
-               lower = list(q1 = 0.001, q2 = 0.001), 
-               upper = list(q1 = 0.999, q2 = 0.999))
+               lower = list(q1 = epsilon_q, q2 = epsilon_q), 
+               upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
         }, error=function(e) {
           message(e)
           print("trying mle2")
           mle2(mloglik_3, start = list(q1 = q1_init, q2 = q2_init),method = "L-BFGS-B",
-               lower = list(q1 = 0.001, q2 = 0.001), 
-               upper = list(q1 = 0.999, q2 = 0.999))
+               lower = list(q1 = epsilon_q, q2 = epsilon_q), 
+               upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
         }, warning=function(e) { 
           mle2(mloglik_3, start = list(q1 = q1_init, q2 = q2_init),method = "L-BFGS-B",
-               lower = list(q1 = 0.001, q2 = 0.001), 
-               upper = list(q1 = 0.999, q2 = 0.999)) 
+               lower = list(q1 = epsilon_q, q2 = epsilon_q), 
+               upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q)) 
         })
     m2logL <- attributes(summary(mle_3))$m2logL
     pars <- lapply(1:2,function(n) attributes(summary(mle_3))$coef[n]) %>% unlist()
@@ -779,7 +779,7 @@ MS_model4 <- function(d_vals,freq_d,N,M,dstar_vals,dmax_vals) {
     thresh2 <- ifelse(dstar %in% d_vals,dstar,max(d_vals[d_vals < dstar]))
     lm2 <- lm(log(p) ~ d, data=df[df$d>=thresh2,])
     q2_init <- 1-exp(lm2$coefficients[2])
-    q2_init <- ifelse(q2_init<0.001,0.001,q2_init)
+    q2_init <- ifelse(q2_init<epsilon_q,epsilon_q,q2_init)
     
     mloglik_4 <- function(q1,q2) {
       c1 <- c1_model4(q1,q2,dstar,dmax)
@@ -790,21 +790,21 @@ MS_model4 <- function(d_vals,freq_d,N,M,dstar_vals,dmax_vals) {
     }
     mle_4 <- tryCatch( {
       mle(mloglik_4,start = list(q1 = q1_init, q2 = q2_init), method = "L-BFGS-B",
-          lower = list(q1 = 0.001, q2 = 0.001), 
-          upper = list(q1 = 0.999, q2 = 0.999))
+          lower = list(q1 = epsilon_q, q2 = epsilon_q), 
+          upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
     }, error=function(e) {
       print("Error in mle:")
       message(e)
       print("Trying mle2:")
       mle2(mloglik_4, start = list(q1 = q1_init, q2 = q2_init), method = "L-BFGS-B",
-           lower = list(q1 = 0.001, q2 = 0.001),
-           upper = list(q1 = 0.999, q2 = 0.999))
+           lower = list(q1 = epsilon_q, q2 = epsilon_q),
+           upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
     }, warning=function(e) {
       print("Warning in mle2:")
       message(e)
       mle2(mloglik_4, start = list(q1 = q1_init, q2 = q2_init), method = "L-BFGS-B",
-           lower = list(q1 = 0.001, q2 = 0.001),
-           upper = list(q1 = 0.999, q2 = 0.999))
+           lower = list(q1 = epsilon_q, q2 = epsilon_q),
+           upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
     })
     m2logL <- attributes(summary(mle_4))$m2logL
     pars <- lapply(1:2,function(n) attributes(summary(mle_4))$coef[n]) %>% unlist() %>% c(dstar)
@@ -850,7 +850,7 @@ MS_model6 <- function(d_seq,freq_d,N,M,dstar_vals) {
   mle_6_ls <- lapply(dstar_vals,function(dstar) {
     gamma_init <- 1 + length(d_seq[d_seq<=dstar])/sum(log(d_seq[d_seq<=dstar]/min(d_seq[d_seq<=dstar])))
     q_init <- 1/mean(d_seq[d_seq>=dstar])
-    q_init <- ifelse(q_init<0.001,0.001,q_init)
+    q_init <- ifelse(q_init<epsilon_q,epsilon_q,q_init)
     
     mloglik_6 <- function(gamma,q) {
       r1 <- r1_model6(gamma,q,dstar)
@@ -863,18 +863,18 @@ MS_model6 <- function(d_seq,freq_d,N,M,dstar_vals) {
 
     mle_6 <- tryCatch( {
       mle(mloglik_6, start = list(gamma = gamma_init, q = q_init),method = "L-BFGS-B",
-          lower = list(gamma = 0.00, q = 0.001), 
-          upper = list(q = 0.999))
+          lower = list(gamma = 0.00, q = epsilon_q), 
+          upper = list(q = 1-epsilon_q))
     }, error=function(e) {
       message(e)
       print("trying mle2")
       mle2(mloglik_6, start = list(gamma = gamma_init, q = q_init),method = "L-BFGS-B",
-           lower = list(gamma = 0.00, q = 0.001), 
-           upper = list(q = 0.999))
+           lower = list(gamma = 0.00, q = epsilon_q), 
+           upper = list(q = 1-epsilon_q))
     }, warning=function(e) { 
       mle2(mloglik_6, start = list(gamma = gamma_init, q = q_init),method = "L-BFGS-B",
-           lower = list(gamma = 0.00, q = 0.001), 
-           upper = list(q = 0.999)) 
+           lower = list(gamma = 0.00, q = epsilon_q), 
+           upper = list(q = 1-epsilon_q)) 
     } )
     m2logL <- attributes(summary(mle_6))$m2logL
     pars <- lapply(1:2,function(n) attributes(summary(mle_6))$coef[n]) %>% unlist()
@@ -905,7 +905,7 @@ MS_model7 <- function(d_seq,freq_d,N,M,dstar_vals,dmax_vals) {
     mle_7_dstar <-  lapply(dstar_vals,function(dstar) {
       gamma_init <- 1 + length(d_seq[d_seq<=dstar])/sum(log(d_seq[d_seq<=dstar]/min(d_seq[d_seq<=dstar])))
       q_init <- 1/mean(d_seq[d_seq>=dstar])
-      q_init <- ifelse(q_init<0.001,0.001,q_init)
+      q_init <- ifelse(q_init<epsilon_q,epsilon_q,q_init)
       
       mloglik_7 <- function(gamma,q) {
         r1 <- r1_model7(gamma,q,dstar,dmax)
@@ -917,18 +917,18 @@ MS_model7 <- function(d_seq,freq_d,N,M,dstar_vals,dmax_vals) {
       }
       mle_7 <- tryCatch( {
         mle(mloglik_7, start = list(gamma = gamma_init, q = q_init),method = "L-BFGS-B",
-            lower = list(gamma = 0.00, q = 0.001), 
-            upper = list(q = 0.999))
+            lower = list(gamma = 0.00, q = epsilon_q), 
+            upper = list(q = 1-epsilon_q))
       }, error=function(e) {
         message(e)
         print("trying mle2")
         mle2(mloglik_7, start = list(gamma = gamma_init, q = q_init),method = "L-BFGS-B",
-             lower = list(gamma = 0.00, q = 0.001), 
-             upper = list(q = 0.999))
+             lower = list(gamma = 0.00, q = epsilon_q), 
+             upper = list(q = 1-epsilon_q))
       }, warning=function(e) { 
         mle2(mloglik_7, start = list(gamma = gamma_init, q = q_init),method = "L-BFGS-B",
-             lower = list(gamma = 0.00, q = 0.001), 
-             upper = list(q = 0.999)) 
+             lower = list(gamma = 0.00, q = epsilon_q), 
+             upper = list(q = 1-epsilon_q)) 
       })
       m2logL <- attributes(summary(mle_7))$m2logL
       pars <- lapply(1:2,function(n) attributes(summary(mle_7))$coef[n]) %>% unlist() %>% c(dstar)
@@ -1031,10 +1031,11 @@ RunModelSelection <- function(objects,type="words",collection=NULL) {
     criterion <- ifelse(type=="artif","BIC","AIC")
     # run selection for each language or model
     rows <- lapply(objects, function(obj) {
+      print(obj)
       tab <- if (type == "artif") { 
               ReadArtif(obj)
             } else { 
-              read.csv(paste("data/real/collections/",collection,suffix,sep="")) %>% filter(ISO_language==obj)
+              read.csv(paste0("data/real/collections/",collection,'.csv')) %>% filter(ISO_language==obj)
             } 
       estimates <- GetMleEst(tab,criterion)$df
       cbind(estimates, obj)
@@ -1047,6 +1048,9 @@ RunModelSelection <- function(objects,type="words",collection=NULL) {
     if (type!='artif') real_df$coll <- collection
     real_df
 }
+
+
+
 
 
 ### IC diff 
@@ -1127,9 +1131,9 @@ DfBestModel <- function(ISO_lang,collection,cumul=F) {
   y_lab <- ifelse(cumul == T, "P(d)","p(d)")
   
   ggplot(df, aes(x_vals,y_pred, color=color)) + geom_line(aes(group = x_vals),color="green")+ 
-    geom_line(data = subset(df, color == "data"),stat="identity", color = "blue") +
+    geom_line(data = subset(df, color == "data"),stat="identity", color = "blue",size=1) +
     geom_line(data = subset(df, color != "data"),aes(color="fitted model"),stat="identity",size=1) +
-    geom_point(data = subset(df, color == "data"),aes(color="data")) +
+    geom_point(data = subset(df, color == "data"),aes(color="data"),size=3) +
     theme_minimal() +
     labs(x="d",y=y_lab, colour = "Legend \n",subtitle=LANGS[ISO==ISO_lang]) +
     theme(legend.position = c(0.2,0.2), text = element_text(size=15)) +
@@ -1170,100 +1174,31 @@ DfBestModel <- function(ISO_lang,collection,cumul=F) {
     geom_point(data = subset(df, color == "data"),aes(color="data")) +
     labs(title=paste("Model",artif_model,'sample'),x="d",y=y_lab)  +
     theme(legend.position = c(0.2,0.2),axis.text = element_text(size = 13)) +
-    scale_color_manual(labels = c("data", "fitted model"), values = c("darkgreen", "magenta")) +
+    scale_color_manual(labels = c("data", "fitted model"), values = c("blue", "magenta")) +
     { if (artif_model == "5") scale_x_log10() } +
     {if (artif_model != "0") scale_y_log_formatted() }
-
 }
 
 
 
 # SIMULATION --------------------------------------
-
-
-#SimData <- function(model,n,q,q1,q2,dstar,gamma,N) {
-  set.seed(327)
-  sampleN <- integer()
-  dmax <- n-1
-  b <- 2^(gamma-1)
-  lambda   <- log(1-q)
-  lambda_1 <- log(1-q1)
-  lambda_2 <- log(1-q2)
-  S3 <- sum(model3(1:dstar,q1,q2,dstar)$y_pred)
-  S4 <- sum(model4(1:dstar,q1,q2,dstar,dmax)$y_pred)
-  S6 <- sum(model6(1:dstar,gamma,q,dstar)$y_pred)
-  S7 <- sum(model7(1:dstar,gamma,q,dstar,dmax)$y_pred)
-  
-  if (model == "0") {
-    seed <- 1
-    while(length(sampleN) < N) {
-      d   <- as.integer(runif(1,1,n))
-      u   <- runif(1,0,1)
-      p_d <- model0(d,n)$y_pred
-      if ( p_d >= u ) {
-        sampleN <- append(sampleN,d)
-        Sys.time()
-      }
-      seed <- seed + 1
-    }
-  }
-  else if (model %in% c("1","2")) {
-   while(length(sampleN) < N) {
-      x <- runif(1,0,1)
-      L = 1 + floor(log(x)/lambda)
-      if (model=="2") {
-         if (L<n) { sampleN <- append(sampleN,L) 
-         } else {sampleN <- sampleN}
-      } else if (model=="1") sampleN <- append(sampleN,L)
-    }
-  } else if (model %in% c("3","4")) {
-    while(length(sampleN) < N) {
-      xi <- runif(1,0,1)
-      if (xi <= ifelse(model == "3",S3,S4)) { # first regime
-        x <- runif(1,0,1)
-        L = 1 + floor(log(x)/lambda_1)
-        if (L <= dstar) sampleN <- append(sampleN,L) else sampleN <- sampleN
-      } else { # second regime
-        x <- runif(1,0,1)
-        L = 1 + floor(log(x)/lambda_2)
-        if (model == "4") {
-          if (L < n - dstar) sampleN <- append(sampleN,L+dstar) else sampleN <- sampleN
-        } else if (model == "3") sampleN <- append(sampleN,L+dstar)
-      }
-    }
-  } else if (model == "5") { 
-    while(length(sampleN) < N) {
-      U <- runif(1,0,1)
-      V <- runif(1,0,1)
-      X <- floor(U^(-1/(gamma-1)))
-      T <- (1 + 1/X)^(gamma-1)
-      if ( V*X*(T-1)/(b-1) <= T/b & X < n) sampleN <- append(sampleN,X)
-    }
-  } else if (model %in% c("6","7")) { 
-    while(length(sampleN) < N) {
-      xi <- runif(1,0,1)
-      if (xi <= ifelse(model == "6",S6,S7)) { # first regime
-        U <- runif(1,0,1)
-        V <- runif(1,0,1)
-        X <- floor(U^(-1/(gamma-1)))
-        T <- (1 + 1/X)^(gamma-1)
-        if ( V*X*(T-1)/(b-1) <= T/b & X <= dstar) sampleN <- append(sampleN,X) else sampleN <- sampleN
-      } else { # second regime
-        x <- runif(1,0,1)
-        L = 1 + floor(log(x)/lambda)
-        if (model == "7") {
-          if (L < n & L > dstar) sampleN <- append(sampleN,L) else sampleN <- sampleN
-        } else if (model == "6") {
-          if ( L > dstar ) sampleN <- append(sampleN,L) else sampleN <- sampleN
-        }
-      }
-    }
-  } 
-  df <- data.frame(d = sampleN, sent_n = n)
-  if (model %in% c("1","3","6"))  df$sent_n <- NULL
-  df
+BinSearch <- function(u,vector) {
+   indices <- 1:(length(vector))
+   low <- indices[1]
+   up  <- indices[length(indices)]
+   while (low!=up) {
+     center <- ceiling((up-low)/2)+low
+     if (u<=vector[center] & u>vector[center-1]) {
+       return(center-1)
+     } else if (u > vector[center]) {
+       low <- center
+     } else if (u < vector[center]) {
+       up <- center
+     }
+   }
+   return(center)
 }
-  
+ 
 SimData <- function(model,n,q,q1,q2,dstar,gamma,N) {
    set.seed(327)
    sampleN <- integer()
@@ -1293,9 +1228,9 @@ SimData <- function(model,n,q,q1,q2,dstar,gamma,N) {
      x <- 1:dmax
      p <- switch(model,'3'=model3(x,q1,q2,dstar),  '4'=model4(x,q1,q2,dstar,dmax),
                        '6'=model6(x,gamma,q,dstar),'7'=model7(x,gamma,q,dstar,dmax))
-     P <- cumsum(p$y_pred)
-     u <- runif(N)
-     sampleN <- mclapply(u, function(uval) min(x[P >= uval]), mc.cores=3) %>% unlist()
+     vector <- c(0,cumsum(p$y_pred))
+     u_list <- runif(N)
+     sampleN <- sapply(u_list, BinSearch, vector=vector)
    } else if (model == "5") { 
      while(length(sampleN) < N) {
        U <- runif(1,0,1)
@@ -1343,7 +1278,7 @@ PlotSampleVsReal <- function(model,cumul=F) {
       {if (model %in% c("5")) scale_x_log10() } +
       geom_line(data = subset(df, color != "sample"),aes(color="empirical")) +
       geom_point(data = subset(df, color == "sample"),aes(color="sample")) +
-      labs(title=paste0('Model ',model), x="d", y=y_lab, colour = "Legend \n") +
+      labs(title=paste0('Model ',model,' sample'), x="d", y=y_lab, colour = "Legend \n") +
       theme(legend.position = c(0.2,0.2),axis.text = element_text(size = 13)) +
       scale_color_manual(labels = c("empirical", "sample"), values = c("red", "#33CC99"))
 

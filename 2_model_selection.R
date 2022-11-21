@@ -1,14 +1,14 @@
 # PERFORM MODEL SELECTION AND WRITE FILES
 
 # arguments:
-# -type: "all", "artif","words","makutec", "anderson"
+# -type: "all", "artif","words"
 # -artif model
 
 source("aux_functions.R")
 args = commandArgs(trailingOnly=TRUE)
 args <- strsplit(args, ",")
 if (length(args)==0) {
-  print("Choose one of: 'artif','words','makutec', 'anderson'")
+  print("Choose one of: 'artif','words'")
 } else if (length(args)==1) {
   args[[2]] = artif_models
 }
@@ -49,33 +49,17 @@ print("Every probability distribution sums to 1! We can go on with the analysis.
 if (args[[1]] %in% c("all","artif")) {
   # ARTIF
     # compute model selection tables
-    art_df         <- RunModelSelection(args[[2]],"artif")
+    art_df <- RunModelSelection(args[[2]],"artif")
     if (all(args[[2]]==artif_models)) write.csv(art_df,"results/artificial/ms_results.csv", row.names = F)
 }
 if (args[[1]] %in% c("all","words")) {
   # REAL
-    obj <- "words"
-    suffix <- ifelse(obj=="words",".csv",paste("_",obj,".csv",sep=""))
     real_dfs <- lapply(COLLS, function(collection) {
       # compute model selection tables
-      RunModelSelection(ISO,obj,collection)
+      RunModelSelection(ISO,"words",collection)
     })
    ms_results <- do.call(rbind.data.frame,real_dfs)
-   write.csv(ms_results,paste("results/real/mixed_n/ms_results",suffix,sep=""), row.names = F)
+   write.csv(ms_results,"results/real/mixed_n/ms_results.csv", row.names = F)
 }
 
 
-# ------------------------------------------------------------------------------
-## SHOW RESULTS
-#if (args[[1]] == c("artif")) {
-#  print("Artificial:")
-#  print(Bart_ICdiff)
-#} else {
-#  print("Real:")
-#  if (args[[1]]=="words") {
-#    print("Words as units")
-#  } else {
-#    print(paste("Chunks as units, ",args[[1]],"'s definition",sep=""))
-#  }
-#  print(real_ICdiff)
-#}
