@@ -1,4 +1,4 @@
-# The distribution of dependency distances
+# The distribution of syntactic dependency distances
 
 ## Abstract
 The syntactic structure of a sentence can be represented as a graph where vertices are words and edges indicate syntactic dependencies between them. In this setting, the distance between two syntactically linked words can be defined as the difference between their positions.
