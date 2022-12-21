@@ -4,16 +4,16 @@ suppressMessages(library("ISOcodes"))
 suppressMessages(library("ggplot2"))
 suppressMessages(require("ggpubr"))
 suppressMessages(require("qpcR"))
-suppressMessages(library(stats4))
-suppressMessages(library(bbmle))
-suppressMessages(library(reshape2))
-suppressMessages(library(data.table))
-suppressMessages(library(RColorBrewer))
-suppressMessages(library(VGAM))
-suppressMessages(library(ggcorrplot))
-suppressMessages(library(parallel))
-library(ggrepel)
-library(xtable)
+suppressMessages(library("stats4"))
+suppressMessages(library("bbmle"))
+suppressMessages(library("reshape2"))
+suppressMessages(library("data.table"))
+suppressMessages(library("RColorBrewer"))
+suppressMessages(library("VGAM"))
+suppressMessages(library("ggcorrplot"))
+suppressMessages(library("parallel"))
+library("ggrepel")
+library("xtable")
 
 
 
@@ -26,15 +26,15 @@ LANGS <- c("Arabic","Chinese","Czech","English","Finnish","French","German","Hin
            "Indonesian","Italian","Japanese","Korean","Polish","Portuguese","Russian","Spanish","Swedish","Thai","Turkish")
 
 ## iso codes
-ISO <- sapply(LANGS,function(l) ISO_639_3 %>% filter(Name==l) %>% dplyr::select(1)) %>% unlist() %>% unname() #%>% sort()
+ISO <- sapply(LANGS,function(l) ISO_639_3 %>% filter(Name==l) %>% dplyr::select(1)) %>% unlist() %>% unname() 
 labs <- LANGS; names(labs) <- ISO
 langs_map = setNames(LANGS,ISO)
 
 ## family and script
-langs_info <- read.csv(paste0("data/real/collections/attributes.csv"))[-1]
+langs_info <- read.csv("data/real/collections/attributes.csv")[-1]
 
 ## models
-artif_models <- c("0","1","2","3","4","5","6","7")
+artif_models   <- c("0","1","2","3","4","5","6","7")
 two_reg_models <- c("3","4","6","7")
 type <- c("0","1","2","3-4","5","6-7")
 K <- c(1, 1, 2, 3, 4, 2, 3, 4)
@@ -53,22 +53,22 @@ names(colors_type) <- levels(factor(type))
 
 
 
+
 ## reading functions --------------------------------------
 
-## artificial data
-### read the random sample of a model, get df of dependency ds (dd)
+# ---- artificial data ---- #
 ReadArtif <- function(model,N_sam=NULL) {
   N_sam <- if (is.null(N_sam)) 10000 else N_sam
-  read.csv(paste("data/artificial/",model,"_",N_sam,".csv",sep=""))[-1]
+  read.csv(paste0("data/artificial/",model,"_",N_sam,".csv"))[-1]
 }
 
-## real data
+# ---- real data  ---- #
 readForrest <- function(collection,ISO_language) {
-    forrest_ch <- read.csv(paste("collections/",collection,"26/",LANGS[ISO==ISO_language],"-all.heads",sep=""), header=FALSE, sep=";")
+    forrest_ch <- read.csv(paste0("collections/",collection,"26/",LANGS[ISO==ISO_language],"-all.heads"), header=FALSE, sep=";")
     apply(forrest_ch,1,split_and_make_int)
 }
 
-### read one language, get df of dd
+# read one language
 ReadOneLang <- function(collection,ISO_language,sent_length=NULL){
   forrest <- readForrest(collection,ISO_language)
   rows <- lapply(1:length(forrest), function(i) {
@@ -84,94 +84,16 @@ ReadOneLang <- function(collection,ISO_language,sent_length=NULL){
   return(lang_table)
 }
 
-
-# chunks as vertices
-assign_chunks <- function(heads,type) {
-  n <- length(heads)
-  chunk_names <- 1:n
-  positions <- 1:n
-  if (type=="makutec") {
-    # are linear neighbors also dependency neighbors ?
-    for (position in 2:n) { 
-      # is word in same chunk as previous word?
-      if (heads[position] == position-1 | position == heads[position-1]) {
-        # - yes: assign same to chunk
-        chunk_names[position] = chunk_names[position-1]
-      } else {
-        # - no: assign to following chunk
-        chunk_names[position] <- chunk_names[position-1] + 1
-      }
-    }
-  } else if (type=="anderson") {
-    for (position in 1:(n-1)) { 
-      # is word in lin-dep relation with previous word, or they share the head?
-      if (position == heads[position+1] | heads[position] == position+1 | heads[position] == heads[position+1]) {
-        # check the surroundings
-        if (any(position == heads[position+1] & any(positions[chunk_names==chunk_names[position]]==heads[position]),  # 
-                heads[position] == position+1 & any(heads[chunk_names==chunk_names[position]]==position),  # 
-                heads[position] == heads[position+1] & 
-                # have we already seen the common head?
-                if (heads[position] < position) {   
-                  chunk_names[heads[position]] != chunk_names[position]  # is it in a different chunk?
-                } else {
-                  any(heads[chunk_names==chunk_names[position]]==position) |  # is the word already in a dependency?
-                  any(sapply(position:(heads[position]-1), function(j) heads[j]!=heads[position])) #is there any non sibling word between them and their head?
-                })) {
-          # yes: assign new chunk
-          chunk_names[position+1] <-  chunk_names[position] + 1
-        } else {
-          # no: assign to same chunk
-          chunk_names[position+1] = chunk_names[position]
-        }
-      } else {
-        # - no: assign to new chunk
-        chunk_names[position+1] <-  chunk_names[position] + 1
-      }
-    }
-  } else { 
-    print("invalid chunking type, must be in 'makutec', 'anderson'")
-    chunk_names = NULL}
-
-  return(chunk_names)
-}
-
-
-## read one language
-ReadOneLangChunks <- function(collection,ISO_language,type="makutec"){
-  forrest <- readForrest(collection,ISO_language)
-  rows <- lapply(1:length(forrest), function(i) {
-    heads <- forrest[[i]]
-    sentence_ID <- i
-    n <- length(heads)
-    positions <- 1:n
-    # get partition in segments
-    chunk_names <- assign_chunks(heads,type)
-    # get values of d
-    d <- sapply(positions, function(j){
-      chunk1 <- chunk_names[j]
-      chunk2 <- ifelse(heads[j]!=0,chunk_names[positions==heads[j]],chunk1)
-      abs(chunk1-chunk2)
-    })
-    d <- d[d!=0]
-    new_n <- length(unique(chunk_names))
-    if (length(d)>=1) data.frame("ISO_language"=ISO_language,"sentence_ID"=sentence_ID,
-                                 "word_num"=n,"sent_n"=new_n,"d"= d)
-   })
-  do.call(rbind,rows)
-}
-
-
-### read a whole collection, get df of dd
-ReadColl <- function(collection,chunks=F) {
-  trees <- if (chunks==F) { 
-           lapply(ISO,ReadOneLang,collection=collection)
-           } else lapply(ISO,ReadOneLangChunks,collection=collection,type=chunks)
+# read a whole collection
+ReadColl <- function(collection) {
+  trees <- lapply(ISO,ReadOneLang,collection=collection)
   forrest <- do.call(rbind,trees)
   return(forrest)
 }
 
 
-## computation --------------------------------------
+
+## computations --------------------------------------
 
 '%!in%' <- function(x,y)!('%in%'(x,y))
 
@@ -196,20 +118,6 @@ TableCumul <- function(d_seq,cumul=F) {
   x_vals <- names(freq) %>% as.numeric()
   df <- data.frame(x_vals,y_pred)
   return(df)
-}
-
-
-
-GetAIC <- function(l,est_df,N,K) {
-  K <- K[l]
-  m2loglik <- est_df[,l]
-  m2loglik + 2*K
-}
-
-GetBIC <- function(l,est_df,N,K) {
-  K <- K[l]
-  m2loglik <- est_df[,l]
-  m2loglik + K*log(N)
 }
 
 Omega <- function(D,Dmin,Drla) (Drla-D)/(Drla-Dmin)
@@ -242,11 +150,10 @@ collection_summary <- function(df) {
       mutate(ISO_language=NULL)
 }
 
-    #sum_tab2 <- sum_tab2[match(ISO, sum_tab2$ISO_language),];sum_tab2$language <- LANGS
- 
+
+# d* of best model
 best_dstar_mixed_n <- function(collection,type = "words") {
-  suffix <- ifelse(type=="words",".csv",paste("_",type,".csv",sep=""))
-  real_df <- read.csv(paste0("results/real/mixed_n/ms_results",suffix),check.names = F) %>% filter(coll == collection)
+  real_df <- read.csv("results/real/mixed_n/ms_results.csv",check.names = F) %>% filter(coll == collection)
 
   df3 <- dplyr::select(real_df,`3.dstar`,ISO_language,best,coll)[real_df$best =="3",] %>% rename(dstar=`3.dstar`)
   df4 <- dplyr::select(real_df,`4.dstar`,ISO_language,best,coll)[real_df$best =="4",] %>% rename(dstar=`4.dstar`)
@@ -260,32 +167,7 @@ best_dstar_mixed_n <- function(collection,type = "words") {
 }
 
 
-# PETRINI'S SCORE
-is_head_first <- function(head,position) {
-  if (head!=0) {
-    if (head<position) return(T) else return(F)
-  }
-}
-
-
-petrini_score <- function(heads,positions) {
-  if (length(heads)>2) {
-    out <- mapply(is_head_first, heads, positions,SIMPLIFY = F)
-    head_first_vec <- do.call(c,out)
-    alpha <- sum(head_first_vec)/length(head_first_vec) %>% as.numeric()
-    max(alpha,(1-alpha))
-  }
-}
-
-head_from_positions <- function(new_pos,old_heads) {
-  sapply(new_pos, function(x) {
-    old_head = old_heads[x]
-    new_head = ifelse(old_head==0,0,which(new_pos==old_head))
-    new_head
-  })
-}
-
-# d* by best model fun
+# d* summary by best model
 dstar_summary <- function(best_dstar) {
   # best_dstar is a df with columns 'dstar' and 'best'
   c(summary(best_dstar$dstar[best_dstar$type == '3-4']),sd(best_dstar$dstar[best_dstar$type == '3-4'])) %>% data.frame() %>% t() %>%
@@ -300,6 +182,7 @@ get_type <- function(best) {
             best %in% c(3,4) ~ "3-4", best == 5 ~ "5", best %in% c(6,7) ~ "6-7")
 }
 
+
 # probabilities
 GetCumProbs <- function(table) {
   table_prob <- table %>% group_by(ISO_language,sent_n,d) %>% summarise(n = n()) %>% 
@@ -311,7 +194,6 @@ GetCumProbs <- function(table) {
            sent_n = as.factor(sent_n))
   return(table_prob)
 }
-
 
 GetCumProbsIndep <- function(table) {
   table_prob <- table %>% group_by(ISO_language,d) %>% summarise(n = n()) %>% 
@@ -331,74 +213,10 @@ GetCumProbsIndep <- function(table) {
   return(cbind(table_prob,"mean_control"=table_control$mean_control,"cum_mean_control"=table_control$cum_mean_control))
 }
 
-## write one language in renormalized structure
-WriteNormalizedHeads <- function(collection,ISO_language,type="anderson"){
-  forrest <- readForrest(collection,ISO_language)
-  rows <- lapply(1:length(forrest), function(i) {
-    heads <- forrest[[i]]
-    sentence_ID <- i
-    n <- length(heads)
-    positions <- 1:n
-    # get partition in segments
-    chunk_names <- assign_chunks(heads,type)
-    groups <- unique(chunk_names)
-    # compute chunk level sigma (and save new structures)
-    res <- lapply(groups, function(group) {
-      chunk_heads <- heads[chunk_names==group]
-      chunk_pos <- positions[chunk_names==group]
-      which_head <- chunk_heads[which(chunk_heads %!in% chunk_pos)]
-      if (which_head==0) 0 else chunk_names[which_head]
-    })
-    # new heads to write
-    do.call(paste,res)
-  })
-  # write renormalized structures
-  fileConn <- file(paste("collections/",tolower(collection),"_",type,"/",LANGS[ISO==ISO_language],".heads",sep=""))
-  writeLines(do.call(c,rows), fileConn)
-  close(fileConn)
-}
 
 
-# PETRINI SCORE
-PetriniScore_df <- function(collection,ISO_language,type="anderson",randomize=F){
-  forrest <- readForrest(collection,ISO_language)
-  rows <- lapply(1:length(forrest), function(i) {
-    heads <- forrest[[i]]
-    n <- length(heads)
-    positions <- 1:n
-    
-    if (randomize==T)  {
-      new_pos <- sample(positions)
-      heads <- head_from_positions(new_pos,heads)
-    }
-    # get partition in segments
-    chunk_names <- assign_chunks(heads,type)
-    # compute chunk level sigma (and save new structures)
-    res <- sapply(unique(chunk_names), function(group) {
-      chunk_heads <- heads[chunk_names==group]
-      chunk_pos <- positions[chunk_names==group]
-      # obtain renormlized node
-      which_head <- chunk_heads[which(chunk_heads %!in% chunk_pos)]
-      new_nead <- if (which_head==0) 0 else chunk_names[which_head]
-      # compute chunk level sigma
-      score <- petrini_score(chunk_heads,chunk_pos)
-      list(new_nead,score)
-    })
-    # compute chunk sigma
-    sigmas <- do.call(c,res[2,])
-    sigma_ch <- if (is.null(sigmas)) NA else mean(sigmas)
-    # compute sentence level sigma
-    new_heads <- do.call(c,res[1,])
-    sigma_sen <- petrini_score(new_heads,1:length(new_heads))
-    sigma_sen <- if (is.null(sigma_sen)) NA else sigma_sen
-    list("sigma_ch"=sigma_ch,"sigma_sen"=sigma_sen)
-  })
-  # get scores df
-  scores_rows <- lapply(rows, function(row) row[1:2])
-  do.call(rbind.data.frame,scores_rows) %>% na.omit()
-}
 
-## graphics ------------
+## plots ------------
 
 control_line <- function(sent_n,d) {
   y <- 2*(sent_n-d)/(sent_n*(sent_n-1))
@@ -409,6 +227,11 @@ scientific_10 <- function(x) {
   parse(text=gsub("e", " %*% 10^", scales::scientific_format()(x)))
 }
 
+scale_y_log_formatted <- function() {
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^as.integer(x)),
+                labels=scales::trans_format('log10',scales::math_format(10^.x)))
+}
+
 AppendStat <- function(l,table,stat="mean") {
   iso <- ISO[LANGS==l]
   if (stat=="mean") { lab <- paste(l,": ",as.numeric(table[table$ISO_language==iso,2]),sep="")
@@ -417,8 +240,8 @@ AppendStat <- function(l,table,stat="mean") {
 }
 
 
-## PLOTS ------------
-## p for chosen sentence lengths
+
+# - p for chosen sentence lengths
 plot_prob <- function(table, collection, ISO_languages, sentence_lengths, cumulative="no",scale_x="linear") {
   table <- table %>% filter(sent_n %in% sentence_lengths & ISO_language %in% ISO_languages) %>% GetCumProbs() 
   
@@ -440,7 +263,7 @@ plot_prob <- function(table, collection, ISO_languages, sentence_lengths, cumula
 }
 
 
-## cumulative p independent of sentence length
+# - cumulative p independent of sentence length
 plot_prob_tot <- function(table, collection, ISO_langs,cumul="no",scale_x="linear") {
 
   table <- table %>% filter(ISO_language %in% ISO_langs) %>% 
@@ -463,7 +286,7 @@ plot_prob_tot <- function(table, collection, ISO_langs,cumul="no",scale_x="linea
 }
 
 
-## cumulative p for mean and modal sentence length of each language
+# - p for mean and modal sentence length 
 PlotStatN <- function(table,collection,stat="mean",cumul="no") {
   stats_tab <- table %>% group_by(ISO_language,sentence_ID) %>% slice_head() %>%
     group_by(ISO_language) %>% summarise(mean = round(mean(sent_n)), mode = getmode(sent_n))
@@ -497,8 +320,7 @@ PlotStatN <- function(table,collection,stat="mean",cumul="no") {
 } 
 
 
-## heatmaps of best model
-
+# - heatmaps of best model
 heatmap_best_mixed_n <- function(collection) {
   best_dstar <- best_dstar_mixed_n(collection) 
   best_dstar %>% mutate(sent_n = factor("  all n"), best=factor(best),
@@ -521,16 +343,133 @@ heatmap_best_fixed_n <- function(collection) {
           axis.text.x=element_blank(),axis.title.x = element_blank(),
           legend.position = "none",text=element_text(size=18)) +
     labs(x="sentence length") + 
-    #geom_hline(yintercept = seq(1.5,20.5,1),color='white') +
     guides(fill=guide_legend(title = 'best \nmodel'))
 }
 
 
+# - best models
+### real data
+DfBestModel <- function(ISO_lang,collection) {
+  # real curve
+  tab <- read.csv(paste0("data/real/collections/",collection,'.csv')) %>%
+    filter(ISO_language==ISO_lang)
+  df_real <- TableCumul(tab$d, cumul = F)
+  x_vals <- df_real$x_vals
+  
+  # predicted curve
+  results_df <- read.csv("results/real/mixed_n/ms_results.csv",check.names = F) %>% 
+    filter(ISO_language==ISO_lang, coll == collection)
+  best_model <- as.character(results_df$best)
+  best_parameters_df <- results_df[,-c(1:length(artif_models))]
+  df_pred_list <- suppressWarnings(YPredList(best_parameters_df,x_vals,max(x_vals))) 
+  df_pred <- switch(best_model, "0"=df_pred_list[[1]],"1"=df_pred_list[[2]], "2"=df_pred_list[[3]],
+                    "3"=df_pred_list[[4]],"4"=df_pred_list[[5]], "5"=df_pred_list[[6]], 
+                    "6"=df_pred_list[[7]],"7"=df_pred_list[[8]]) 
+  
+  # bind
+  df_list <- list(df_real,df_pred)
+  df <- do.call(rbind,df_list) %>% cbind("color"=rep(c("data","fitted model"),sapply(df_list,nrow)))
+  
+  # plot
+  ggplot(df, aes(x_vals,y_pred, color=color)) + geom_line(aes(group = x_vals),color="green")+ 
+    geom_line(data = subset(df, color == "data"),stat="identity", color = "blue",size=1) +
+    geom_line(data = subset(df, color != "data"),aes(color="fitted model"),stat="identity",size=1) +
+    geom_point(data = subset(df, color == "data"),aes(color="data"),size=3) +
+    theme_minimal() +
+    geom_vline(xintercept=4,color='red',linetype='dashed') +
+    labs(x="d",y="p(d)", colour = "Legend \n",subtitle=LANGS[ISO==ISO_lang]) +
+    theme(legend.position = c(0.2,0.2), text = element_text(size=15)) +
+    scale_color_manual(labels = c("data", "fitted model"), values = c("blue", "magenta")) +
+    { if (best_model == "5") scale_x_log10() } +
+    {if (best_model != "0") scale_y_log_formatted() }
+}  
 
-# MODEL SELECTION --------------------------------------
 
-## sums
 
+### artificial data
+DfModSelArtif <- function(artif_model,criterion="BIC") {
+  # artificial curve
+  d_art  <- ReadArtif(artif_model,10000)
+  df_art <- TableCumul(d_art[,1],cumul=F)
+  x_vals <- df_art$x_vals
+  
+  # predicted curve
+  results_df <- read.csv("results/artificial/ms_results.csv",check.names = F) %>% filter(model==artif_model)
+  best_model <- as.character(results_df$best)
+  best_parameters_df <- results_df[,-c(1:length(artif_models))]
+  df_pred_list       <- YPredList(best_parameters_df,x_vals,unique(d_art$sent_n)) 
+  df_pred <- switch(best_model, 
+                    "0"=df_pred_list[[1]],"1"=df_pred_list[[2]],"2"=df_pred_list[[3]],
+                    "3"=df_pred_list[[4]],"4"=df_pred_list[[5]], "5"=df_pred_list[[6]],
+                    "6"=df_pred_list[[7]], "7"=df_pred_list[[8]],) 
+  
+  # bind
+  df_list <- list(df_art,df_pred) 
+  df <- do.call(rbind,df_list) %>%  
+    cbind("color"=rep(c("data","fitted model"),sapply(df_list,nrow)))
+  
+  ggplot(df, aes(x_vals,y_pred, color=color)) + geom_line(aes(group = x_vals),color="green")+ 
+    geom_line(data = subset(df, color == "data"),stat="identity", color = "darkgreen") +
+    geom_line(data = subset(df, color != "data"),aes(color="fitted model"),stat="identity",size=1) +
+    geom_point(data = subset(df, color == "data"),aes(color="data")) +
+    labs(title=paste("Model",artif_model,'sample'),x="d",y="p(d)")  +
+    theme(legend.position = c(0.2,0.2),axis.text = element_text(size = 13)) +
+    scale_color_manual(labels = c("data", "fitted model"), values = c("blue", "magenta")) +
+    { if (artif_model == "5") scale_x_log10() } +
+    {if (artif_model != "0") scale_y_log_formatted() }
+}
+
+
+
+PlotSampleVsReal <- function(model) {
+  # artificial
+  d_art <- ReadArtif(model)
+  df_art <- TableCumul(d_art[,1],cumul=F)
+  x_vals <- df_art$x_vals
+  
+  # true model
+  n=20; q=0.2; q1=0.5; q2=0.1; dstar=4; gamma=1.6
+  df_theo  <- switch(model,
+                     "0"= model0(x_vals,n),
+                     "1"= model1(x_vals,q,plot=F),   "2"= model2(x_vals,q,n-1),
+                     "3"= model3(x_vals,q1,q2,dstar),"4"= model4(x_vals,q1,q2,dstar,n-1),
+                     "5"= model5(x_vals,n-1,gamma),  "6"= model6(x_vals,gamma,q,dstar),"7"= model7(x_vals,gamma,q,dstar,n-1)) 
+  
+  # bind
+  df_list <- list(df_art,df_theo)
+  df <- do.call(rbind,df_list) %>% cbind("color"=rep(c("sample","empirical"),sapply(df_list,nrow)))
+  
+  # plot
+  ggplot(df, aes(x_vals,y_pred, color=color)) +
+    {if (model != "0") scale_y_log_formatted() } +
+    {if (model %in% c("5")) scale_x_log10() } +
+    geom_line(data = subset(df, color != "sample"),aes(color="empirical")) +
+    geom_point(data = subset(df, color == "sample"),aes(color="sample")) +
+    labs(title=paste0('Model ',model,' sample'), x="d", y="p(d)", colour = "Legend \n") +
+    theme(legend.position = c(0.2,0.2),axis.text = element_text(size = 13)) +
+    scale_color_manual(labels = c("empirical", "sample"), values = c("red", "#33CC99"))
+  
+} 
+
+
+
+
+# model selection --------------------------------------
+
+# - Information Criteria
+GetAIC <- function(l,est_df,N,K) {
+  K <- K[l]
+  m2loglik <- est_df[,l]
+  m2loglik + 2*K
+}
+
+GetBIC <- function(l,est_df,N,K) {
+  K <- K[l]
+  m2loglik <- est_df[,l]
+  m2loglik + K*log(N)
+}
+
+# - sums
 H <- function(dmax,gamma)  sum(seq(1, dmax)^(-gamma))
 W <- function(d_vals,freq_d,sent_n)  sum(freq_d*log(sent_n-d_vals))
 M_prime <- function(d_vals,freq_d) sum(freq_d*log(d_vals))
@@ -546,44 +485,45 @@ M_prime_star <- function(d_vals,freq_d,dstar) {
 }
 N_star <- function(d_vals,freq_d,dstar) freq_d[d_vals <= dstar] %>% sum()
 
-## models------------
 
+
+# - models------------
 c1_model3 <- function(q1,q2,dstar) q1*q2/(q2 + (1-q1)^(dstar-1)*(q1-q2))
 c1_model4 <- function(q1,q2,dstar,dmax) q1*q2/(q2 + (1-q1)^(dstar-1)*(q1-q2-q1*(1-q2)^(dmax-dstar+1)))
-c2_fun <- function(c1,q1,q2,dstar) c1*((1-q1)^(dstar-1))/(1-q2)^(dstar-1)
+c2_fun    <- function(c1,q1,q2,dstar) c1*((1-q1)^(dstar-1))/(1-q2)^(dstar-1)
 r1_model6 <- function(gamma,q,dstar) q/(q*H(dstar,gamma)+dstar^(-gamma)*(1-q))
 r1_model7 <- function(gamma,q,dstar,dmax) q/(q*H(dstar,gamma)+dstar^(-gamma)*(1-q-(1-q)^(dmax-dstar+1)))
-r2_fun <- function(r1,gamma,q,dstar) r1*dstar^(-gamma)/(1-q)^(dstar-1)
+r2_fun    <- function(r1,gamma,q,dstar) r1*dstar^(-gamma)/(1-q)^(dstar-1)
 l1_model8 <- function(gamma1,gamma2,dstar) dstar^(-gamma2)/(H(dstar,gamma1)*dstar^(-gamma2) + dstar^(-gamma1)*(zeta(gamma2,shift=dstar+1)))
 l1_model9 <- function(gamma1,gamma2,dstar,dmax) 1/(H(dstar,gamma1) + (dstar^(-gamma1)/dstar^(-gamma2))*(H(dmax,gamma2)-H(dstar,gamma2)))
-l2_fun <- function(l1,gamma1,gamma2,dstar) l1*dstar^(gamma2)/dstar^(gamma1)
+l2_fun    <- function(l1,gamma1,gamma2,dstar) l1*dstar^(gamma2)/dstar^(gamma1)
 
 
-model0    <- function(d,n,cumul=F) { 
+model0  <- function(d,n,cumul=F) { 
   y <- 2*(n-d)/(n*(n-1))
-  if (cumul==T) y <- cumforward(y)
+  if (cumul) cumforward(y) else y
   return(data.frame("x_vals" = d,"y_pred"=y))
 }
 
-model1    <- function(d,q,plot=F,cumul=F) { 
+model1  <- function(d,q,plot=F,cumul=F) { 
   if (plot==T) d <- 1:max(d)
   y = q*(1-q)^(d-1)
-  if (cumul==T) y <- cumforward(y)
+  if (cumul) cumforward(y) else y
   return(data.frame("x_vals" = d,"y_pred"=y))
 }
 
-model2    <- function(d,q,dmax,cumul=F) {
+model2  <- function(d,q,dmax,cumul=F) {
   y <- (q*(1-q)^(d-1))/(1-(1-q)^(dmax))
-  if (cumul==T) y <- cumforward(y)
+  if (cumul) cumforward(y) else y
   return(data.frame("x_vals" = d,"y_pred"=y))
 }
 
 
-model3    <- function(d,q1,q2,dstar,cumul=F) {
+model3 <- function(d,q1,q2,dstar,cumul=F) {
   c1 <- c1_model3(q1,q2,dstar)
   c2 <- c2_fun(c1,q1,q2,dstar)
   y <- ifelse(d<=dstar,c1*(1-q1)^(d-1),c2*(1-q2)^(d-1))
-  if (cumul==T) y <- cumforward(y)
+  if (cumul) cumforward(y) else y
   return(data.frame("x_vals" = d,"y_pred"=y))
 }
 
@@ -591,101 +531,82 @@ model4 <- function(d,q1,q2,dstar,dmax,cumul=F) {
   c1 <- c1_model4(q1,q2,dstar,dmax)
   c2 <- c2_fun(c1,q1,q2,dstar)
   y <- ifelse(d<=dstar,c1*(1-q1)^(d-1),c2*(1-q2)^(d-1))
-  if (cumul==T) y <- cumforward(y)
+  if (cumul) cumforward(y) else y
   return(data.frame("x_vals" = d,"y_pred"=y))
 } 
 
 model5  <- function(d,dmax,gamma,cumul=F) {
   y <- d^(-gamma)/(H((dmax),gamma))
-  if (cumul==T) y <- cumforward(y)
+  if (cumul) cumforward(y) else y
   return(data.frame("x_vals" = d,"y_pred"=y))
 }
 
-model6    <- function(d,gamma,q,dstar,cumul=F) {
+model6 <- function(d,gamma,q,dstar,cumul=F) {
   r1 <- r1_model6(gamma,q,dstar)
   r2 <- r2_fun(r1,gamma,q,dstar)
   y <- ifelse(d<=dstar,r1*d^(-gamma),r2*(1-q)^(d-1))
-  if (cumul==T) y <- cumforward(y)
+  if (cumul) cumforward(y) else y
   return(data.frame("x_vals" = d,"y_pred"=y))
 }
 
-model7    <- function(d,gamma,q,dstar,dmax,cumul=F) {
+model7  <- function(d,gamma,q,dstar,dmax,cumul=F) {
   r1 <- r1_model7(gamma,q,dstar,dmax)
   r2 <- r2_fun(r1,gamma,q,dstar)
   y <- ifelse(d<=dstar,r1*d^(-gamma),r2*(1-q)^(d-1))
-  if (cumul==T) y <- cumforward(y)
-  return(data.frame("x_vals" = d,"y_pred"=y))
-}
-
-model8    <- function(d,gamma1,gamma2,dstar,cumul=F) {
-  l1 <- l1_model8(gamma1,gamma2,dstar)
-  l2 <- l2_fun(l1,gamma1,gamma2,dstar)
-  y <- ifelse(d<=dstar,l1*d^(-gamma1),l2*d^(-gamma2))
-  if (cumul==T) y <- cumforward(y)
-  return(data.frame("x_vals" = d,"y_pred"=y))
-}
-
-model9    <- function(d,gamma1,gamma2,dstar,dmax,cumul=F) {
-  l1 <- l1_model9(gamma1,gamma2,dstar,dmax)
-  l2 <- l2_fun(l1,gamma1,gamma2,dstar)
-  y <- ifelse(d<=dstar,l1*d^(-gamma1),l2*d^(-gamma2))
-  if (cumul==T) y <- cumforward(y)
+  if (cumul) cumforward(y) else y
   return(data.frame("x_vals" = d,"y_pred"=y))
 }
 
 
-## log-likelihoods ------------
+
+
+# - log-likelihoods ------------
 epsilon_q <- 10^-8
 
-
-## estimation
-###  obtain -2 log-likelihoods and best parameters
-
-
+# Model 0
 MS_model0 <- function(tab,d_vals,freq_d) {
-    ### Random
-    # supply
-    loglik_0_ext <- if (ncol(tab)>2 & length(unique(tab$sent_n))!=1) sapply(unique(tab$sent_n), function(n_w) {
-       tab_w <- filter(tab, sent_n == n_w) %>% group_by(d) %>% 
-        summarise(d=d,freq_d = n()) %>%
-        distinct(d,.keep_all = T) 
-       N_n <- sum(tab_w$freq_d)
-       W_n <- W(tab_w$d,tab_w$freq_d,n_w)
-       N_n*log(2/(n_w*(n_w-1))) + W_n
-    }) %>% sum() 
-    
-    # estimate
-    N <- nrow(tab)
-    
-    mloglik_0 <- function(dmax) {
-          -( W(d_vals,freq_d,dmax+1) + N*log(2/(dmax*(dmax+1))) )
-    }
-      
-    mle_0 <- if (ncol(tab)<3 | length(unique(tab$sent_n))==1) tryCatch( {
-     mle(mloglik_0, start = list(dmax = max(d_vals)),method = "L-BFGS-B",
-           lower = c(dmax = max(d_vals)))
-    }, warning=function(e) {
-      print("trying mle2")
-      print(e)
-      mle2(mloglik_0, start = list(dmax = max(d_vals)),method = "L-BFGS-B",
-          lower = c(dmax = max(d_vals)))
-    }, error=function(e) { 
-      message(e)
-      mle2(mloglik_0, start = list(dmax = max(d_vals)),method = "L-BFGS-B",
-           lower = c(dmax = max(d_vals)))
-      })
-    
-    m2logL <- if (ncol(tab)<3 | length(unique(tab$sent_n))==1) attributes(summary(mle_0))$m2logL else loglik_0_ext*-2
-    pars   <- if (ncol(tab)<3 | length(unique(tab$sent_n))==1) attributes(summary(mle_0))$coef[1] else "-" 
-    return(list(m2logL=m2logL, pars=pars,pars_names <- c("0:dmax")))
+  ### Random
+  # supply
+  loglik_0_ext <- if (ncol(tab)>2 & length(unique(tab$sent_n))!=1) sapply(unique(tab$sent_n), function(n_w) {
+    tab_w <- filter(tab, sent_n == n_w) %>% group_by(d) %>% 
+      summarise(d=d,freq_d = n()) %>%
+      distinct(d,.keep_all = T) 
+    N_n <- sum(tab_w$freq_d)
+    W_n <- W(tab_w$d,tab_w$freq_d,n_w)
+    N_n*log(2/(n_w*(n_w-1))) + W_n
+  }) %>% sum()
+  
+  # estimate
+  N <- nrow(tab)
+  
+  mloglik_0 <- function(dmax) {
+    -( W(d_vals,freq_d,dmax+1) + N*log(2/(dmax*(dmax+1))) )
+  }
+  
+  mle_0 <- if (ncol(tab)<3 | length(unique(tab$sent_n))==1) tryCatch( {
+    mle(mloglik_0, start = list(dmax = max(d_vals)),method = "L-BFGS-B",
+        lower = c(dmax = max(d_vals)))
+  }, warning=function(e) {
+    print("trying mle2")
+    print(e)
+    mle2(mloglik_0, start = list(dmax = max(d_vals)),method = "L-BFGS-B",
+         lower = c(dmax = max(d_vals)))
+  }, error=function(e) { 
+    message(e)
+    mle2(mloglik_0, start = list(dmax = max(d_vals)),method = "L-BFGS-B",
+         lower = c(dmax = max(d_vals)))
+  })
+  
+  m2logL <- if (ncol(tab)<3 | length(unique(tab$sent_n))==1) attributes(summary(mle_0))$m2logL else loglik_0_ext*-2
+  pars   <- if (ncol(tab)<3 | length(unique(tab$sent_n))==1) attributes(summary(mle_0))$coef[1] else "-" 
+  return(list(m2logL=m2logL, pars=pars,pars_names= c("0:dmax")))
 }
 
 
+# Model 1
 MS_model1 <- function(q_init,d_vals,freq_d,N,M) {
-  ### Geometric
-  mloglik_1 <- function(q) {
-    - ( (M - N) * log(1 - q) + N*log(q) )
-  }
+  mloglik_1 <- function(q) - ( (M - N) * log(1 - q) + N*log(q) )
+  
   mle_1 <- tryCatch( {
     mle(mloglik_1, start = list(q = q_init),method = "L-BFGS-B",
         lower = c(epsilon_q),upper = c(1-epsilon_q))
@@ -694,15 +615,13 @@ MS_model1 <- function(q_init,d_vals,freq_d,N,M) {
     NULL })
   
   m2logL <- attributes(summary(mle_1))$m2logL
-  pars <- attributes(summary(mle_1))$coef[1]
-  return(list(m2logL=m2logL, pars=pars,pars_names <- c("1:q")))
+  pars   <- attributes(summary(mle_1))$coef[1]
+  return(list(m2logL=m2logL, pars=pars, pars_names=c("1:q")))
 }
 
+# Model 2
 MS_model2 <- function(q_init,d_vals,freq_d,N,M) {
-    ### Trunc Geometric
-    mloglik_2 <- function(q,dmax) {
-      - ( (M - N)*log(1 - q) + N*log(q/(1-(1-q)^dmax)) )
-    }
+    mloglik_2 <- function(q,dmax) - ( (M - N)*log(1 - q) + N*log(q/(1-(1-q)^dmax)) )
     
     mle_2 <- tryCatch( {
      mle(mloglik_2, start = list(q = q_init,dmax=max(d_vals)),method = "L-BFGS-B",
@@ -717,103 +636,60 @@ MS_model2 <- function(q_init,d_vals,freq_d,N,M) {
       NULL })
     
     m2logL <- attributes(summary(mle_2))$m2logL
-    pars <- lapply(1:2,function(n) attributes(summary(mle_2))$coef[n]) %>% unlist()
+    pars   <- lapply(1:2,function(n) attributes(summary(mle_2))$coef[n]) %>% unlist()
     if (m2logL < 2) m2logL <- mloglik_2(pars[1],pars[2])*2
-    return(list(m2logL=m2logL, pars=pars,pars_names <- c("2:q","2:dmax")))
-}
-
-MS_model3 <- function(d_vals,freq_d,N,M,dstar_vals) {
-  mle_3_ls <- lapply(dstar_vals,function(dstar) {
-    #print(paste("dstar=",dstar))
-    rel_freq <- freq_d/N
-    df <- cbind(p=unname(rel_freq), d=d_vals) %>% data.frame()
-    lm1 <- lm(log(p) ~ d, data=df[df$d<=dstar,])
-    q1_init <- 1-exp(lm1$coefficients[2])
-    thresh2 <- ifelse(dstar %in% d_vals,dstar,max(d_vals[d_vals < dstar]))
-    lm2 <- lm(log(p) ~ d, data=df[df$d>=thresh2,])
-    q2_init <- 1-exp(lm2$coefficients[2])
-    q2_init <- ifelse(q2_init<epsilon_q,epsilon_q,q2_init)
-    
-    mloglik_3 <- function(q1,q2) {
-          c1 <- c1_model3(q1,q2,dstar)
-          c2 <- c2_fun(c1,q1,q2,dstar)
-          Mstar <- M_star(d_vals,freq_d,dstar)
-          Nstar <- N_star(d_vals,freq_d,dstar)
-          - ( Nstar*log(c1) + (N-Nstar)*log(c2) + (Mstar - Nstar)*log((1-q1)/(1-q2)) + (M - N)*log(1-q2) )
-        }
-    mle_3 <- tryCatch( {
-          mle(mloglik_3, start = list(q1 = q1_init, q2 = q2_init),method = "L-BFGS-B",
-               lower = list(q1 = epsilon_q, q2 = epsilon_q), 
-               upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
-        }, error=function(e) {
-          message(e)
-          print("trying mle2")
-          mle2(mloglik_3, start = list(q1 = q1_init, q2 = q2_init),method = "L-BFGS-B",
-               lower = list(q1 = epsilon_q, q2 = epsilon_q), 
-               upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
-        }, warning=function(e) { 
-          mle2(mloglik_3, start = list(q1 = q1_init, q2 = q2_init),method = "L-BFGS-B",
-               lower = list(q1 = epsilon_q, q2 = epsilon_q), 
-               upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q)) 
-        })
-    m2logL <- attributes(summary(mle_3))$m2logL
-    pars <- lapply(1:2,function(n) attributes(summary(mle_3))$coef[n]) %>% unlist()
-    list(m2logL=m2logL,pars=pars)
-  })
-  
-  m2logLiks <- sapply(mle_3_ls,"[[",1)
-  mle_3 <- mle_3_ls[[which.min(m2logLiks)]]
-  mle_3$pars  <- append(mle_3$pars,dstar_vals[[which.min(m2logLiks)]])
-  mle_3$pars_names <- c("3:q1","3:q2","3:dstar")
-  return(mle_3)
+    return(list(m2logL=m2logL, pars=pars, pars_names=c("2:q","2:dmax")))
 }
 
 
+
+# Model 4
 MS_model4 <- function(d_vals,freq_d,N,M,dstar_vals,dmax_vals) {
   mle_4_ls <- lapply(dmax_vals,function(dmax) {
     mle_4_dstar <-  lapply(dstar_vals,function(dstar) {
-    rel_freq <- freq_d/N
-    df <- cbind(p=unname(rel_freq), d=d_vals) %>% data.frame()
-    lm1 <- lm(log(p) ~ d, data=df[df$d<=dstar,])
-    q1_init <- 1-exp(lm1$coefficients[2])
-    thresh2 <- ifelse(dstar %in% d_vals,dstar,max(d_vals[d_vals < dstar]))
-    lm2 <- lm(log(p) ~ d, data=df[df$d>=thresh2,])
-    q2_init <- 1-exp(lm2$coefficients[2])
-    q2_init <- ifelse(q2_init<epsilon_q,epsilon_q,q2_init)
-    
-    mloglik_4 <- function(q1,q2) {
-      c1 <- c1_model4(q1,q2,dstar,dmax)
-      c2 <- c2_fun(c1,q1,q2,dstar)
-      Mstar <- M_star(d_vals,freq_d,dstar)
-      Nstar <- N_star(d_vals,freq_d,dstar)
-      - ( Nstar*log(c1) + (N-Nstar)*log(c2) + (Mstar - Nstar)*log((1-q1)/(1-q2)) + (M - N)*log(1-q2) )
-    }
-    mle_4 <- tryCatch( {
-      mle(mloglik_4,start = list(q1 = q1_init, q2 = q2_init), method = "L-BFGS-B",
-          lower = list(q1 = epsilon_q, q2 = epsilon_q), 
-          upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
-    }, error=function(e) {
-      print("Error in mle:")
-      message(e)
-      print("Trying mle2:")
-      mle2(mloglik_4, start = list(q1 = q1_init, q2 = q2_init), method = "L-BFGS-B",
-           lower = list(q1 = epsilon_q, q2 = epsilon_q),
-           upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
-    }, warning=function(e) {
-      print("Warning in mle2:")
-      message(e)
-      mle2(mloglik_4, start = list(q1 = q1_init, q2 = q2_init), method = "L-BFGS-B",
-           lower = list(q1 = epsilon_q, q2 = epsilon_q),
-           upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
-    })
-    m2logL <- attributes(summary(mle_4))$m2logL
-    pars <- lapply(1:2,function(n) attributes(summary(mle_4))$coef[n]) %>% unlist() %>% c(dstar)
-    list(m2logL=m2logL,pars=pars)
+      print(dstar)
+      rel_freq <- freq_d/N
+      df <- cbind(p=unname(rel_freq), d=d_vals) %>% data.frame()
+      lm1 <- lm(log(p) ~ d, data=df[df$d<=dstar,])
+      q1_init <- 1-exp(lm1$coefficients[2])
+      thresh2 <- ifelse(dstar %in% d_vals,dstar,max(d_vals[d_vals < dstar]))
+      lm2 <- lm(log(p) ~ d, data=df[df$d>=thresh2,])
+      q2_init <- 1-exp(lm2$coefficients[2])
+      q2_init <- ifelse(q2_init<epsilon_q,epsilon_q,q2_init)
+      
+      mloglik_4 <- function(q1,q2) {
+        c1 <- c1_model4(q1,q2,dstar,dmax)
+        c2 <- c2_fun(c1,q1,q2,dstar)
+        Mstar <- M_star(d_vals,freq_d,dstar)
+        Nstar <- N_star(d_vals,freq_d,dstar)
+        - ( Nstar*log(c1) + (N-Nstar)*log(c2) + (Mstar - Nstar)*log((1-q1)/(1-q2)) + (M - N)*log(1-q2) )
+      }
+      mle_4 <- tryCatch( {
+        mle(mloglik_4,start = list(q1 = q1_init, q2 = q2_init), method = "L-BFGS-B",
+            lower = list(q1 = epsilon_q, q2 = epsilon_q), 
+            upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
+      }, error=function(e) {
+        print("Error in mle:")
+        message(e)
+        print("Trying mle2:")
+        mle2(mloglik_4, start = list(q1 = q1_init, q2 = q2_init), method = "L-BFGS-B",
+             lower = list(q1 = epsilon_q, q2 = epsilon_q),
+             upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
+      }, warning=function(e) {
+        print("Warning in mle2:")
+        message(e)
+        mle2(mloglik_4, start = list(q1 = q1_init, q2 = q2_init), method = "L-BFGS-B",
+             lower = list(q1 = epsilon_q, q2 = epsilon_q),
+             upper = list(q1 = 1-epsilon_q, q2 = 1-epsilon_q))
+      })
+      m2logL <- attributes(summary(mle_4))$m2logL
+      pars   <- lapply(1:2,function(n) attributes(summary(mle_4))$coef[n]) %>% unlist() %>% c(dstar)
+      list(m2logL=m2logL, pars=pars)
   })
 
   m2logLiks <- sapply(mle_4_dstar,"[[",1)
-  mle_4 <- mle_4_dstar[[which.min(m2logLiks)]]
-  mle_4$pars  <-  c(mle_4$pars,dmax)
+  mle_4     <- mle_4_dstar[[which.min(m2logLiks)]]
+  mle_4$pars       <-  c(mle_4$pars,dmax)
   mle_4$pars_names <- c("4:q1","4:q2","4:dstar","4:dmax")
   mle_4
  })
@@ -823,12 +699,10 @@ MS_model4 <- function(d_vals,freq_d,N,M,dstar_vals,dmax_vals) {
   mle_4
 }
 
-
+# Model 5
 MS_model5 <- function(gamma_init,d_vals,freq_d,N) {
-    ### Trunc Geometric
-    mloglik_5 <- function(dmax,gamma) {
-      - (- gamma*M_prime(d_vals,freq_d) - N*log(H(dmax,gamma)) )
-    }
+    mloglik_5 <- function(dmax,gamma) - (- gamma*M_prime(d_vals,freq_d) - N*log(H(dmax,gamma)) )
+    
     mle_5 <- tryCatch( {
       mle(mloglik_5, start = list(dmax=max(d_vals),gamma = gamma_init),method = "L-BFGS-B",
           lower = list(dmax=max(d_vals),gamma = 0.00))
@@ -840,11 +714,12 @@ MS_model5 <- function(gamma_init,d_vals,freq_d,N) {
       NULL })
     
     m2logL <- attributes(summary(mle_5))$m2logL
-    pars <- lapply(1:2,function(n) attributes(summary(mle_5))$coef[n]) %>% unlist()
+    pars   <- lapply(1:2,function(n) attributes(summary(mle_5))$coef[n]) %>% unlist()
     if (m2logL < 2) m2logL <- mloglik_5(pars[1],pars[2])*2
-    list(m2logL=m2logL,pars=pars,pars_names=c("5:dmax","5:gam"))
+    list(m2logL=m2logL, pars=pars, pars_names=c("5:dmax","5:gam"))
 }
 
+# Model 6
 MS_model6 <- function(d_seq,freq_d,N,M,dstar_vals) {
   d_vals <- sort(unique(d_seq))
   mle_6_ls <- lapply(dstar_vals,function(dstar) {
@@ -882,23 +757,14 @@ MS_model6 <- function(d_seq,freq_d,N,M,dstar_vals) {
   })
   
   m2logLiks <- sapply(mle_6_ls,"[[",1)
-  mle_6 <- mle_6_ls[[which.min(m2logLiks)]]
-  mle_6$pars  <- append(mle_6$pars,dstar_vals[[which.min(m2logLiks)]])
+  mle_6     <- mle_6_ls[[which.min(m2logLiks)]]
+  mle_6$pars       <- append(mle_6$pars,dstar_vals[[which.min(m2logLiks)]])
   mle_6$pars_names <- c("6:gamma","6:q","6:dstar")
   return(mle_6)
 }
 
 
-mloglik_7 <- function(gamma,q,dstar,dmax) {
-  r1 <- r1_model7(gamma,q,dstar,dmax)
-  r2 <- r2_fun(r1,gamma,q,dstar)
-  Mprimestar <- M_prime_star(d_vals,freq_d,dstar)
-  Mstar      <- M_star(d_vals,freq_d,dstar)
-  Nstar      <- N_star(d_vals,freq_d,dstar)
-  - ( Nstar*log(r1) -gamma*Mprimestar + (N - Nstar)*log(r2) + (M - Mstar - N + Nstar)*log(1-q) )
-}
-
-
+# Model 7
 MS_model7 <- function(d_seq,freq_d,N,M,dstar_vals,dmax_vals) {
   d_vals <- sort(unique(d_seq))
   mle_7_ls <- lapply(dmax_vals,function(dmax) {
@@ -936,8 +802,8 @@ MS_model7 <- function(d_seq,freq_d,N,M,dstar_vals,dmax_vals) {
     })
     
     m2logLiks <- sapply(mle_7_dstar,"[[",1)
-    mle_7 <- mle_7_dstar[[which.min(m2logLiks)]]
-    mle_7$pars  <-  c(mle_7$pars,dmax)
+    mle_7     <- mle_7_dstar[[which.min(m2logLiks)]]
+    mle_7$pars       <-  c(mle_7$pars,dmax)
     mle_7$pars_names <- c("7:gamma","7:q","7:dstar","7:dmax")
     mle_7
   })
@@ -948,7 +814,86 @@ MS_model7 <- function(d_seq,freq_d,N,M,dstar_vals,dmax_vals) {
 }
 
 
+RunModelSelection <- function(objects,type="words",collection=NULL) {
+  ### objects: models or languages
+  ### type: "artif","words"
+  
+  criterion <- ifelse(type=="artif","BIC","AIC")
+  # run selection for each language or model
+  rows <- lapply(objects, function(obj) {
+    print(obj)
+    tab <- if (type == "artif") { 
+      ReadArtif(obj)
+    } else { 
+      read.csv(paste0("data/real/collections/",collection,'.csv')) %>% filter(ISO_language==obj)
+    } 
+    estimates <- GetMleEst(tab,criterion)$df
+    cbind(estimates, obj)
+  })
+  
+  # bind results
+  real_df  <- do.call(rbind,rows) %>% data.frame() 
+  obj_name <- ifelse(type=='artif','model','ISO_language')
+  colnames(real_df) <- c(sub("X","",colnames(real_df))[-ncol(real_df)],obj_name)
+  real_df$best      <- colnames(real_df)[apply(real_df[1:8],1,function(x) which(x==min(x)))]
+  if (type!='artif') real_df$coll <- collection
+  real_df
+}
 
+# Model 3
+MS_model3 <- function(d_vals,freq_d,N,M,dstar_vals) {
+  
+  # TEST
+  eps_3 <- 10^-3
+  eps_8 <- 10^-8
+  
+  mle_3_ls <- lapply(dstar_vals,function(dstar) {
+    # initial values
+    print(dstar)
+    rel_freq <- freq_d/N
+    df <- cbind(p=unname(rel_freq), d=d_vals) %>% data.frame()
+    lm1 <- lm(log(p) ~ d, data=df[df$d<=dstar,])
+    q1_init <- 1-exp(lm1$coefficients[2])
+    thresh2 <- ifelse(dstar %in% d_vals,dstar,max(d_vals[d_vals < dstar]))
+    lm2 <- lm(log(p) ~ d, data=df[df$d>=thresh2,])
+    q2_init <- 1-exp(lm2$coefficients[2])
+    q2_init <- ifelse(q2_init<=eps_8,eps_8,q2_init)
+    print(q1_init)
+    print(q2_init)
+    
+    mloglik_3 <- function(q1,q2) {
+      c1 <- c1_model3(q1,q2,dstar)
+      c2 <- c2_fun(c1,q1,q2,dstar)
+      Mstar <- M_star(d_vals,freq_d,dstar)
+      Nstar <- N_star(d_vals,freq_d,dstar)
+      - ( Nstar*log(c1) + (N-Nstar)*log(c2) + (Mstar - Nstar)*log((1-q1)/(1-q2)) + (M - N)*log(1-q2) )
+    }
+    mle_3 <- tryCatch( {
+      mle(mloglik_3, start = list(q1 = q1_init, q2 = q2_init),method = "L-BFGS-B",
+          lower = list(q1 = eps_8, q2 = eps_8), 
+          upper = list(q1 = 1-eps_8, q2 = 1-eps_3))
+    }, error=function(e) {
+      message(e)
+      print("trying mle2")
+      mle2(mloglik_3, start = list(q1 = q1_init, q2 = q2_init),method = "L-BFGS-B",
+           lower = list(q1 = eps_8, q2 = eps_8), 
+           upper = list(q1 = 1-eps_8, q2 = 1-eps_3))
+    }, warning=function(e) { 
+      mle2(mloglik_3, start = list(q1 = q1_init, q2 = q2_init),method = "L-BFGS-B",
+           lower = list(q1 = eps_8, q2 = eps_8), 
+           upper = list(q1 = 1-eps_8, q2 = 1-eps_3))
+    })
+    m2logL <- attributes(summary(mle_3))$m2logL
+    pars   <- lapply(1:2,function(n) attributes(summary(mle_3))$coef[n]) %>% unlist()
+    list(m2logL=m2logL, pars=pars)
+  })
+  
+  m2logLiks        <- sapply(mle_3_ls,"[[",1)
+  mle_3            <- mle_3_ls[[which.min(m2logLiks)]]
+  mle_3$pars       <- append(mle_3$pars,dstar_vals[[which.min(m2logLiks)]])
+  mle_3$pars_names <- c("3:q1","3:q2","3:dstar")
+  return(mle_3)
+}
 
 GetMleEst <- function(tab,criterion) {
   # fixed variables
@@ -957,9 +902,8 @@ GetMleEst <- function(tab,criterion) {
   freq_d <- table(d_seq)
   M <- sum(freq_d*d_vals)
   N <- length(d_seq)
-  #dstar_vals <- 2:(max(d_seq)-1)
   dstar_vals <- d_vals[2:(length(d_vals)-1)]
-  dmax_vals <- seq(max(d_vals),max(d_vals)+10)
+  dmax_vals  <- seq(max(d_vals),max(d_vals)+10)
   
   # initial values
   q_init <- 1/mean(d_seq)
@@ -978,7 +922,7 @@ GetMleEst <- function(tab,criterion) {
                       print("while fitting model 2 ...")
                       message (e);NULL})  
   mle_3     <- tryCatch( { MS_model3(d_vals,freq_d,N,M,dstar_vals) 
-                    }, warning=function(e) {
+                    }, error=function(e) {
                       print("warning while fitting model 3 ...")
                       message (e)
                       MS_model3(d_vals,freq_d,N,M,dstar_vals) 
@@ -1022,38 +966,10 @@ GetMleEst <- function(tab,criterion) {
 }
 
 
-### obtain table of AIC/BIC and best parameters
-
-RunModelSelection <- function(objects,type="words",collection=NULL) {
-    ### objects: models or languages
-    ### type: "artif","words","makutec", "anderson"
-    suffix <- ifelse(type=="words",".csv",paste("_",args[[1]],".csv",sep=""))
-    criterion <- ifelse(type=="artif","BIC","AIC")
-    # run selection for each language or model
-    rows <- lapply(objects, function(obj) {
-      print(obj)
-      tab <- if (type == "artif") { 
-              ReadArtif(obj)
-            } else { 
-              read.csv(paste0("data/real/collections/",collection,'.csv')) %>% filter(ISO_language==obj)
-            } 
-      estimates <- GetMleEst(tab,criterion)$df
-      cbind(estimates, obj)
-    })
-    # bind results
-    real_df  <- do.call(rbind,rows) %>% data.frame() 
-    obj_name <- ifelse(type=='artif','model','ISO_language')
-    colnames(real_df) <- c(sub("X","",colnames(real_df))[-ncol(real_df)],obj_name)
-    real_df$best      <- colnames(real_df)[apply(real_df[1:8],1,function(x) which(x==min(x)))]
-    if (type!='artif') real_df$coll <- collection
-    real_df
-}
 
 
 
-
-
-### IC diff 
+# IC diff 
 DfICdiff <- function(df,type){
   ICs_diff <- df[,1:length(artif_models)]
   ICs_diff[,] <- apply(ICs_diff[,],1,function(x) x - min(x)) %>% t()
@@ -1062,7 +978,7 @@ DfICdiff <- function(df,type){
   ICs_diff
   }
 
-### best parameters
+# best parameters
 Dfparams <- function(df) df[-(1:length(artif_models))] 
 
 
@@ -1088,12 +1004,12 @@ YPredList <- function(best_parameters_df,x_vals,sent_n) {
   dmax       <- as.numeric(best_parameters_df[,12])
   gam        <- as.numeric(best_parameters_df[,13])
   y_pred5    <- model5(x_vals,dmax,gam)
-  gamma         <-  as.numeric(best_parameters_df[,14])
-  q         <-  as.numeric(best_parameters_df[,15])
+  gamma      <-  as.numeric(best_parameters_df[,14])
+  q          <-  as.numeric(best_parameters_df[,15])
   dstar      <-  as.numeric(best_parameters_df[,16])
   y_pred6    <- model6(x_vals,gamma,q,dstar)
-  gamma         <-  as.numeric(best_parameters_df[,17])
-  q         <-  as.numeric(best_parameters_df[,18])
+  gamma      <-  as.numeric(best_parameters_df[,17])
+  q          <-  as.numeric(best_parameters_df[,18])
   dstar      <- as.numeric(best_parameters_df[,19])
   dmax       <- as.numeric(best_parameters_df[,20])
   y_pred7    <- model7(x_vals,gamma,q,dstar,dmax)
@@ -1102,86 +1018,11 @@ YPredList <- function(best_parameters_df,x_vals,sent_n) {
   return(Filter(Negate(is.null), y_list))
 } 
 
-## plots
-### real data
-DfBestModel <- function(ISO_lang,collection,cumul=F) {
-  # real curve
-  tab <- read.csv(paste0("data/real/collections/",collection,'.csv')) %>%
-    filter(ISO_language==ISO_lang)
-  df_real <- TableCumul(tab$d, cumul = cumul)
-  x_vals <- df_real$x_vals
-  
-  # predicted curve
-  results_df <- read.csv("results/real/mixed_n/ms_results.csv",check.names = F) %>% 
-    filter(ISO_language==ISO_lang, coll == collection)
-  best_model <- as.character(results_df$best)
-  best_parameters_df <- results_df[,-c(1:length(artif_models))]
-  df_pred_list <- suppressWarnings(YPredList(best_parameters_df,x_vals,max(x_vals))) 
-  
-  df_pred <- switch(best_model, "0"=df_pred_list[[1]],"1"=df_pred_list[[2]], "2"=df_pred_list[[3]],
-                                "3"=df_pred_list[[4]],"4"=df_pred_list[[5]], "5"=df_pred_list[[6]], 
-                                "6"=df_pred_list[[7]],"7"=df_pred_list[[8]],) 
-  if (cumul==T) df_pred$y_pred <- cumforward(df_pred$y_pred)
-  
-  # bind
-  df_list <- list(df_real,df_pred)
-  df <- do.call(rbind,df_list) %>% cbind("color"=rep(c("data","fitted model"),sapply(df_list,nrow)))
-  
-  # plot
-  y_lab <- ifelse(cumul == T, "P(d)","p(d)")
-  
-  ggplot(df, aes(x_vals,y_pred, color=color)) + geom_line(aes(group = x_vals),color="green")+ 
-    geom_line(data = subset(df, color == "data"),stat="identity", color = "blue",size=1) +
-    geom_line(data = subset(df, color != "data"),aes(color="fitted model"),stat="identity",size=1) +
-    geom_point(data = subset(df, color == "data"),aes(color="data"),size=3) +
-    theme_minimal() +
-    labs(x="d",y=y_lab, colour = "Legend \n",subtitle=LANGS[ISO==ISO_lang]) +
-    theme(legend.position = c(0.2,0.2), text = element_text(size=15)) +
-    scale_color_manual(labels = c("data", "fitted model"), values = c("blue", "magenta")) +
-    { if (best_model == "5") scale_x_log10() } +
-    {if (best_model != "0") scale_y_log_formatted() }
-}  
-
-
-### artificial data
- DfModSelArtif <- function(artif_model,criterion="BIC",cumul=F,N_sam=10000) {
-  # artificial curve
-  d_art  <- ReadArtif(artif_model,N_sam)
-  df_art <- TableCumul(d_art[,1],cumul = cumul)
-  x_vals <- df_art$x_vals
-  
-  # predicted curve
-  results_df <- read.csv("results/artificial/ms_results.csv",check.names = F) %>% filter(model==artif_model)
-  best_model <- as.character(results_df$best)
-  best_parameters_df <- results_df[,-c(1:length(artif_models))]
-  df_pred_list       <- YPredList(best_parameters_df,x_vals,unique(d_art$sent_n)) 
-  df_pred <- switch(best_model, 
-                    "0"=df_pred_list[[1]],"1"=df_pred_list[[2]],"2"=df_pred_list[[3]],
-                    "3"=df_pred_list[[4]],"4"=df_pred_list[[5]], "5"=df_pred_list[[6]],
-                    "6"=df_pred_list[[7]], "7"=df_pred_list[[8]],) 
-  if (cumul==T) df_pred$y_pred <- cumforward(df_pred$y_pred)
-  
-  # bind
-  df_list <- list(df_art,df_pred) 
-  df <- do.call(rbind,df_list) %>%  
-    cbind("color"=rep(c("data","fitted model"),sapply(df_list,nrow)))
-  
-  y_lab <- ifelse(cumul == T, "P(d)","p(d)")
-
-  ggplot(df, aes(x_vals,y_pred, color=color)) + geom_line(aes(group = x_vals),color="green")+ 
-    geom_line(data = subset(df, color == "data"),stat="identity", color = "darkgreen") +
-    geom_line(data = subset(df, color != "data"),aes(color="fitted model"),stat="identity",size=1) +
-    geom_point(data = subset(df, color == "data"),aes(color="data")) +
-    labs(title=paste("Model",artif_model,'sample'),x="d",y=y_lab)  +
-    theme(legend.position = c(0.2,0.2),axis.text = element_text(size = 13)) +
-    scale_color_manual(labels = c("data", "fitted model"), values = c("blue", "magenta")) +
-    { if (artif_model == "5") scale_x_log10() } +
-    {if (artif_model != "0") scale_y_log_formatted() }
-}
 
 
 
-# SIMULATION --------------------------------------
+
+# simulation --------------------------------------
 BinSearch <- function(u,vector) {
    indices <- 1:(length(vector))
    low <- indices[1]
@@ -1199,23 +1040,14 @@ BinSearch <- function(u,vector) {
    return(center)
 }
  
+
 SimData <- function(model,n,q,q1,q2,dstar,gamma,N) {
    set.seed(327)
    sampleN <- integer()
    b       <- 2^(gamma-1)
    lambda  <- log(1-q)
    dmax <- if (model %in% c('3','6')) 10^6 else n-1
-   if (model == "0") {
-     seed <- 1
-     while(length(sampleN) < N) {
-       d   <- as.integer(runif(1,1,n))
-       u   <- runif(1,0,1)
-       p_d <- model0(d,n)$y_pred
-       if ( p_d >= u ) sampleN <- append(sampleN,d)
-       seed <- seed + 1
-     }
-   }
-   else if (model %in% c("1","2")) {
+   if (model %in% c("1","2")) {
      while(length(sampleN) < N) {
        x <- runif(1,0,1)
        L = 1 + floor(log(x)/lambda)
@@ -1224,13 +1056,14 @@ SimData <- function(model,n,q,q1,q2,dstar,gamma,N) {
          } else {sampleN <- sampleN}
        } else if (model=="1") sampleN <- append(sampleN,L)
      }
-   } else if (model %in% c("3","4","6","7")) {
+   } else if (model %in% c("0","3","4","6","7")) {
      x <- 1:dmax
-     p <- switch(model,'3'=model3(x,q1,q2,dstar),  '4'=model4(x,q1,q2,dstar,dmax),
+     p <- switch(model,'0'=model0(x,n),'3'=model3(x,q1,q2,dstar),'4'=model4(x,q1,q2,dstar,dmax),
                        '6'=model6(x,gamma,q,dstar),'7'=model7(x,gamma,q,dstar,dmax))
      vector <- c(0,cumsum(p$y_pred))
      u_list <- runif(N)
      sampleN <- sapply(u_list, BinSearch, vector=vector)
+     
    } else if (model == "5") { 
      while(length(sampleN) < N) {
        U <- runif(1,0,1)
@@ -1239,47 +1072,11 @@ SimData <- function(model,n,q,q1,q2,dstar,gamma,N) {
        T <- (1 + 1/X)^(gamma-1)
        if ( V*X*(T-1)/(b-1) <= T/b & X < n) sampleN <- append(sampleN,X)
      }
-   } 
+   }
    df <- data.frame(d = sampleN, sent_n = n)
    if (model %in% c("1","3","6"))  df$sent_n <- NULL
    df
  }
  
  
-scale_y_log_formatted <- function() {
-  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^as.integer(x)),
-               labels=scales::trans_format('log10',scales::math_format(10^.x)))
-}
 
-PlotSampleVsReal <- function(model,cumul=F) {
-  # artificial
-  d_art <- ReadArtif(model)
-  df_art <- TableCumul(d_art[,1])
-  if (cumul==F) df_art <- TableCumul(d_art[,1],cumul=F)
-  x_vals <- df_art$x_vals
-  
-  # true model
-  df_theo  <- switch(model,
-                     "0"= model0(x_vals,n),
-                     "1"= model1(x_vals,q,plot=F),   "2"= model2(x_vals,q,n-1),
-                     "3"= model3(x_vals,q1,q2,dstar),"4"= model4(x_vals,q1,q2,dstar,n-1),
-                     "5"= model5(x_vals,n-1,gamma),  "6"= model6(x_vals,gamma,q,dstar),"7"= model7(x_vals,gamma,q,dstar,n-1)) 
-  if (cumul==T) df_theo$y_pred <- cumforward(df_theo$y_pred)
-  
-  # bind
-  df_list <- list(df_art,df_theo)
-  df <- do.call(rbind,df_list) %>% cbind("color"=rep(c("sample","empirical"),sapply(df_list,nrow)))
-  
-  # plot
-  y_lab <- ifelse(cumul == T, "P(d)","p(d)")
-
-    ggplot(df, aes(x_vals,y_pred, color=color)) +
-      {if (model != "0") scale_y_log_formatted() } +
-      {if (model %in% c("5")) scale_x_log10() } +
-      geom_line(data = subset(df, color != "sample"),aes(color="empirical")) +
-      geom_point(data = subset(df, color == "sample"),aes(color="sample")) +
-      labs(title=paste0('Model ',model,' sample'), x="d", y=y_lab, colour = "Legend \n") +
-      theme(legend.position = c(0.2,0.2),axis.text = element_text(size = 13)) +
-      scale_color_manual(labels = c("empirical", "sample"), values = c("red", "#33CC99"))
-
-} 

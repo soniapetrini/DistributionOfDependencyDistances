@@ -54,7 +54,6 @@ if (args[[1]] == "artif") {
 
 
 
-
 # -------------------------- MIXED N --------------------------
 
 if (args[[1]] != "artif") {
@@ -106,12 +105,12 @@ if (args[[1]] != "artif") {
 }
 
 
-# plot for presentation
-ISO_lang <- 'ita'
-collection <- 'PSUD'
-
-DfBestModel(ISO_lang,collection)
-ggsave(paste0("italian_lin_lin.png"))
+## plot for presentation
+#ISO_lang <- 'ita'
+#collection <- 'PSUD'
+#
+#DfBestModel(ISO_lang,collection)
+#ggsave(paste0("italian_log_lin.png"))
 
 
 

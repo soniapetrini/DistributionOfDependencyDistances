@@ -32,7 +32,7 @@ if (args[[1]] =="artif") {
     print(init)
     d <- SimData(model,n,q,q1,q2,dstar,gamma,N)
     print(Sys.time()-init)
-    write.csv(d,paste("data/artificial/",model,"_",N,".csv",sep=""))
+    write.csv(d,paste0("data/artificial/",model,"_",N,".csv"))
     d
   })
 

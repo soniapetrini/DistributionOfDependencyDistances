@@ -1,7 +1,8 @@
 # PERFORM MODEL SELECTION AND WRITE FILES
 
 # arguments:
-# -type: "all", "artif","words"
+
+# -type: "all", "artif", "words"
 # -artif model
 
 source("aux_functions.R")
@@ -20,8 +21,8 @@ if (length(args)==0) {
 e <- 10^-6
 
 ## truncated models: should sum to 1 for any max(d)=dmax
-maxd <- seq(3,60,10)
-list <- sapply(maxd, function(maxd) {
+maxd_list <- seq(3,60,10)
+list <- sapply(maxd_list, function(maxd) {
   stopifnot(
     between(sum(model0(1:maxd,maxd+1)$y_pred),1-e,1+e),
     between(sum(model2(1:maxd,runif(1,0,1),maxd)$y_pred),1-e,1+e),
@@ -50,7 +51,7 @@ if (args[[1]] %in% c("all","artif")) {
   # ARTIF
     # compute model selection tables
     art_df <- RunModelSelection(args[[2]],"artif")
-    if (all(args[[2]]==artif_models)) write.csv(art_df,"results/artificial/ms_results.csv", row.names = F)
+    #if (all(args[[2]]==artif_models)) write.csv(art_df,"results/artificial/ms_results.csv", row.names = F)
 }
 if (args[[1]] %in% c("all","words")) {
   # REAL
@@ -59,7 +60,7 @@ if (args[[1]] %in% c("all","words")) {
       RunModelSelection(ISO,"words",collection)
     })
    ms_results <- do.call(rbind.data.frame,real_dfs)
-   write.csv(ms_results,"results/real/mixed_n/ms_results.csv", row.names = F)
+   #write.csv(ms_results,"results/real/mixed_n/ms_results.csv", row.names = F)
 }
 
 
