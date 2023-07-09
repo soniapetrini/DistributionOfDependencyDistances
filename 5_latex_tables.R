@@ -97,7 +97,7 @@ list <- lapply(COLLS, function(collection) {
     ## AIC
     latexaic <- real_df1[1:length(artif_models)] %>% `colnames<-`(c(paste("Model",artif_models))) %>% mutate(language=LANGS) 
     latexaic <- latexaic[,c(ncol(latexaic),1:length(artif_models))]   # reorder
-    print(xtable(latexaic, label=paste0("tab:",collection,"_AIC_scores"),type = "latex"), 
+    print(xtable(latexaic, label=paste0("tab:",collection,"_AIC_scores"),type = "latex",digits=0), 
           file = paste0(real_path,collection,"_AIC_scores.tex"), only.contents=T, 
           include.colnames=FALSE,include.rownames=FALSE,hline.after = NULL)
     
@@ -248,37 +248,10 @@ df_omega <- omega_null_table()
 print(xtable(df_omega[,c(2,1,3,4,5)], label=paste0("tab:omega_0"),type = "latex"), 
       file = paste0("latex_outputs/real/omega_0.tex"),
       include.rownames=FALSE,include.colnames=FALSE,only.contents=T,hline.after = NULL)
-
-
 }
 
 
 
-
-
-
-#print("begin chunks")
-### chunks   -------------------------------------------------------------
-#
-## is c<=(1,2)dstar? 
-#tabs <- lapply(c(1,2), function(mult) {
-#  tabs <- lapply(COLLS, function(COLL) {
-#      tab_coll <- read.csv(paste("data/real/",COLL,"_dstar_chunksize",suffix,".csv",sep=""))
-#      tab_coll %>% group_by(ISO_language) %>%  summarise(perc = sum(chunk_size<=dstar*mult)/n())
-#    })
-#  tab_type <- merge(tabs[[1]],tabs[[2]],"ISO_language") 
-#  colnames(tab_type) <- (c("ISO_language",paste(args[[1]],COLLS[1],sep="_"),paste(args[[1]],COLLS[2],sep="_")))
-#  apply(tab_type[-1],2,summary) %>% t()
-#  
-#  tab <- do.call(rbind.data.frame,tabs)
-#  print(xtable(tab, caption = paste("Share of chunk sizes \\leq $",mult,"d^*$.",sep=''),type = "latex",digits = 3), 
-#        file = paste(real_path,"s_less_",mult,"dstar.tex",sep=""),caption.placement = "top",
-#        include.rownames=T,table.placement = getOption("xtable.table.placement", "H"),latex.environments = "center")
-#})
-#
-#aa <- tab_coll[tab_coll$chunk_size<=tab_coll$dstar*mult,]
-#table(aa$chunk_size)
-#table(aa$dstar)
 
 
 

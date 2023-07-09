@@ -4,7 +4,7 @@ assign_chunks <- function(heads,type) {
   n <- length(heads)
   chunk_names <- 1:n
   positions <- 1:n
-  if (type=="makutec") {
+  if (type=="macutek") {
     # are linear neighbors also dependency neighbors ?
     for (position in 2:n) { 
       # is word in same chunk as previous word?
@@ -43,7 +43,7 @@ assign_chunks <- function(heads,type) {
       }
     }
   } else { 
-    print("invalid chunking type, must be in 'makutec', 'anderson'")
+    print("invalid chunking type, must be in 'macutek', 'anderson'")
     chunk_names = NULL}
   
   return(chunk_names)
@@ -51,7 +51,7 @@ assign_chunks <- function(heads,type) {
 
 
 ## read one language
-ReadOneLangChunks <- function(collection,ISO_language,type="makutec"){
+ReadOneLangChunks <- function(collection,ISO_language,type="macutek"){
   forrest <- readForrest(collection,ISO_language)
   rows <- lapply(1:length(forrest), function(i) {
     heads <- forrest[[i]]
